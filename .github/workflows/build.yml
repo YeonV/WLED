@@ -16,6 +16,6 @@ jobs:
         pip install platformio        
         platformio update
     - name: Run PlatformIO
-      run: PLATFORMIO_CI_SRC=wled00 platformio run -e d1mini 
+      run: PLATFORMIO_CI_SRC=wled00 platformio run -e d1_mini_ota 
     - name: show
       run: ls -la
