@@ -37,7 +37,7 @@ jobs:
         platform-url: https://arduino.esp8266.com/stable/package_esp8266com_index.json
         required-libraries: FastLED,NeoPixelBus by Makuna,IRRemoteESP8266
         build-properties: '{}'
-        sketch-name: "wled00.ino"
+        sketch-names: "wled00.ino"
         
     - name: Create Release
       id: create_release
