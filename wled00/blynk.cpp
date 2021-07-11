@@ -8,12 +8,12 @@
 uint16_t blHue = 0;
 byte blSat = 255;
 
-void initBlynk(const char* auth)
+void initBlynk(const char *auth, const char *host, uint16_t port)
 {
   #ifndef WLED_DISABLE_BLYNK
   if (!WLED_CONNECTED) return;
   blynkEnabled = (auth[0] != 0);
-  if (blynkEnabled) Blynk.config(auth);
+  if (blynkEnabled) Blynk.config(auth, host, port);
   #endif
 }
 
@@ -44,45 +44,45 @@ void updateBlynk()
 BLYNK_WRITE(V0)
 {
   bri = param.asInt();//bri
-  colorUpdated(NOTIFIER_CALL_MODE_BLYNK);
+  colorUpdated(CALL_MODE_BLYNK);
 }
 
 BLYNK_WRITE(V1)
 {
   blHue = param.asInt();//hue
   colorHStoRGB(blHue*10,blSat,(false)? colSec:col);
-  colorUpdated(NOTIFIER_CALL_MODE_BLYNK);
+  colorUpdated(CALL_MODE_BLYNK);
 }
 
 BLYNK_WRITE(V2)
 {
   blSat = param.asInt();//sat
   colorHStoRGB(blHue*10,blSat,(false)? colSec:col);
-  colorUpdated(NOTIFIER_CALL_MODE_BLYNK);
+  colorUpdated(CALL_MODE_BLYNK);
 }
 
 BLYNK_WRITE(V3)
 {
   bool on = (param.asInt()>0);
-  if (!on != !bri) {toggleOnOff(); colorUpdated(NOTIFIER_CALL_MODE_BLYNK);}
+  if (!on != !bri) {toggleOnOff(); colorUpdated(CALL_MODE_BLYNK);}
 }
 
 BLYNK_WRITE(V4)
 {
   effectCurrent = param.asInt()-1;//fx
-  colorUpdated(NOTIFIER_CALL_MODE_BLYNK);
+  colorUpdated(CALL_MODE_BLYNK);
 }
 
 BLYNK_WRITE(V5)
 {
   effectSpeed = param.asInt();//sx
-  colorUpdated(NOTIFIER_CALL_MODE_BLYNK);
+  colorUpdated(CALL_MODE_BLYNK);
 }
 
 BLYNK_WRITE(V6)
 {
   effectIntensity = param.asInt();//ix
-  colorUpdated(NOTIFIER_CALL_MODE_BLYNK);
+  colorUpdated(CALL_MODE_BLYNK);
 }
 
 BLYNK_WRITE(V7)

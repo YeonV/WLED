@@ -10,10 +10,10 @@ void handleHue()
 {
   if (hueReceived)
   {
-    colorUpdated(NOTIFIER_CALL_MODE_HUE); hueReceived = false;
+    colorUpdated(CALL_MODE_HUE); hueReceived = false;
     if (hueStoreAllowed && hueNewKey)
     {
-      saveSettingsToEEPROM(); //save api key
+      serializeConfigSec(); //save api key
       hueStoreAllowed = false;
       hueNewKey = false;
     }
@@ -92,7 +92,7 @@ void onHueData(void* arg, AsyncClient* client, void *data, size_t len)
   if (str == nullptr) return;
   str += 4;
 
-  StaticJsonDocument<512> root;
+  StaticJsonDocument<1024> root;
   if (str[0] == '[') //is JSON array
   {
     auto error = deserializeJson(root, str);
@@ -161,7 +161,7 @@ void onHueData(void* arg, AsyncClient* client, void *data, size_t len)
           hueColormode = 1;
         } else //hs mode
         {
-          hueHue = root[F("hue")];
+          hueHue = root["hue"];
           hueSat = root[F("sat")];
           hueColormode = 2;
         }

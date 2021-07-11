@@ -44,9 +44,12 @@ void onAlexaChange(EspalexaDevice* dev)
       if (bri == 0)
       {
         bri = briLast;
-        colorUpdated(NOTIFIER_CALL_MODE_ALEXA);
+        colorUpdated(CALL_MODE_ALEXA);
       }
-    } else applyMacro(macroAlexaOn);
+    } else {
+      applyPreset(macroAlexaOn, CALL_MODE_ALEXA);
+      if (bri == 0) espalexaDevice->setValue(briLast); //stop Alexa from complaining if macroAlexaOn does not actually turn on
+    }
   } else if (m == EspalexaDeviceProperty::off)
   {
     if (!macroAlexaOff)
@@ -55,19 +58,22 @@ void onAlexaChange(EspalexaDevice* dev)
       {
         briLast = bri;
         bri = 0;
-        colorUpdated(NOTIFIER_CALL_MODE_ALEXA);
+        colorUpdated(CALL_MODE_ALEXA);
       }
-    } else applyMacro(macroAlexaOff);
+    } else {
+      applyPreset(macroAlexaOff, CALL_MODE_ALEXA);
+      if (bri != 0) espalexaDevice->setValue(0); //stop Alexa from complaining if macroAlexaOff does not actually turn off
+    }
   } else if (m == EspalexaDeviceProperty::bri)
   {
     bri = espalexaDevice->getValue();
-    colorUpdated(NOTIFIER_CALL_MODE_ALEXA);
+    colorUpdated(CALL_MODE_ALEXA);
   } else //color
   {
     if (espalexaDevice->getColorMode() == EspalexaColorMode::ct) //shade of white
     {
       uint16_t ct = espalexaDevice->getCt();
-      if (useRGBW)
+      if (strip.isRgbw)
       {
         switch (ct) { //these values empirically look good on RGBW
           case 199: col[0]=255; col[1]=255; col[2]=255; col[3]=255; break;
@@ -87,7 +93,7 @@ void onAlexaChange(EspalexaDevice* dev)
       col[2] = ( color        & 0xFF);
       col[3] = 0;
     }
-    colorUpdated(NOTIFIER_CALL_MODE_ALEXA);
+    colorUpdated(CALL_MODE_ALEXA);
   }
 }
 

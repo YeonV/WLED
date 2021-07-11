@@ -15,19 +15,48 @@ void handleAlexa();
 void onAlexaChange(EspalexaDevice* dev);
 
 //blynk.cpp
-void initBlynk(const char* auth);
+void initBlynk(const char* auth, const char* host, uint16_t port);
 void handleBlynk();
 void updateBlynk();
 
 //button.cpp
-void shortPressAction();
-bool isButtonPressed();
+void shortPressAction(uint8_t b=0);
+bool isButtonPressed(uint8_t b=0);
 void handleButton();
 void handleIO();
+
+//cfg.cpp
+bool deserializeConfig(JsonObject doc, bool fromFS = false);
+void deserializeConfigFromFS();
+bool deserializeConfigSec();
+void serializeConfig();
+void serializeConfigSec();
+
+template<typename DestType>
+bool getJsonValue(const JsonVariant& element, DestType& destination) {
+  if (element.isNull()) {
+    return false;
+  }
+
+  destination = element.as<DestType>();
+  return true;
+}
+
+template<typename DestType, typename DefaultType>
+bool getJsonValue(const JsonVariant& element, DestType& destination, const DefaultType defaultValue) {
+  if(!getJsonValue(element, destination)) {
+    destination = defaultValue;
+    return false;
+  }
+
+  return true;
+}
+
 
 //colors.cpp
 void colorFromUint32(uint32_t in, bool secondary = false);
 void colorFromUint24(uint32_t in, bool secondary = false);
+uint32_t colorFromRgbw(byte* rgbw);
 void relativeChangeWhite(int8_t amount, byte lowerBoundary = 0);
 void colorHStoRGB(uint16_t hue, byte sat, byte* rgb); //hue, sat to rgb
 void colorKtoRGB(uint16_t kelvin, byte* rgb);
@@ -37,6 +66,7 @@ void colorXYtoRGB(float x, float y, byte* rgb); // only defined if huesync disab
 void colorRGBtoXY(byte* rgb, float* xy); // only defined if huesync disabled TODO
 
 void colorFromDecOrHexString(byte* rgb, char* in);
+bool colorFromHexString(byte* rgb, const char* in);
 void colorRGBtoRGBW(byte* rgb); //rgb to rgbw (http://codewelt.com/rgbw). (RGBW_MODE_LEGACY)
 
 //dmx.cpp
@@ -48,6 +78,12 @@ void handleE131Packet(e131_packet_t* p, IPAddress clientIP, byte protocol);
 
 //file.cpp
 bool handleFileRead(AsyncWebServerRequest*, String path);
+bool writeObjectToFileUsingId(const char* file, uint16_t id, JsonDocument* content);
+bool writeObjectToFile(const char* file, const char* key, JsonDocument* content);
+bool readObjectFromFileUsingId(const char* file, uint16_t id, JsonDocument* dest);
+bool readObjectFromFile(const char* file, const char* key, JsonDocument* dest);
+void updateFSInfo();
+void closeFile();
 
 //hue.cpp
 void handleHue();
@@ -62,7 +98,6 @@ bool decodeIRCustom(uint32_t code);
 void applyRepeatActions();
 void relativeChange(byte* property, int8_t amount, byte lowerBoundary = 0, byte higherBoundary = 0xFF);
 void changeEffectSpeed(int8_t amount);
-void changeBrightness(int8_t amount);
 void changeEffectIntensity(int8_t amount);
 void decodeIR(uint32_t code);
 void decodeIR24(uint32_t code);
@@ -73,6 +108,7 @@ void decodeIR44(uint32_t code);
 void decodeIR21(uint32_t code);
 void decodeIR6(uint32_t code);
 void decodeIR9(uint32_t code);
+void decodeIRJson(uint32_t code);
 
 void initIR();
 void handleIR();
@@ -83,10 +119,10 @@ void handleIR();
 #include "src/dependencies/json/AsyncJson-v6.h"
 #include "FX.h"
 
-void deserializeSegment(JsonObject elem, byte it);
-bool deserializeState(JsonObject root);
-void serializeSegment(JsonObject& root, WS2812FX::Segment& seg, byte id);
-void serializeState(JsonObject root);
+void deserializeSegment(JsonObject elem, byte it, byte presetId = 0);
+bool deserializeState(JsonObject root, byte callMode = CALL_MODE_DIRECT_CHANGE, byte presetId = 0);
+void serializeSegment(JsonObject& root, WS2812FX::Segment& seg, byte id, bool forPreset = false, bool segmentBounds = true);
+void serializeState(JsonObject root, bool forPreset = false, bool includeBri = true, bool segmentBounds = true);
 void serializeInfo(JsonObject root);
 void serveJson(AsyncWebServerRequest* request);
 bool serveLiveLeds(AsyncWebServerRequest* request, uint32_t wsClient = 0);
@@ -96,12 +132,13 @@ void setValuesFromMainSeg();
 void resetTimebase();
 void toggleOnOff();
 void setAllLeds();
-void setLedsStandard(bool justColors = false);
+void setLedsStandard();
 bool colorChanged();
 void colorUpdated(int callMode);
 void updateInterfaces(uint8_t callMode);
 void handleTransitions();
 void handleNightlight();
+byte scaledBri(byte in);
 
 //lx_parser.cpp
 bool parseLx(int lxValue, byte* rgbw);
@@ -112,6 +149,7 @@ bool initMqtt();
 void publishMqtt();
 
 //ntp.cpp
+void handleTime();
 void handleNetworkTime();
 void sendNTPPacket();
 bool checkNTPResponse();    
@@ -121,6 +159,8 @@ bool checkCountdown();
 void setCountdown();
 byte weekdayMondayFirst();
 void checkTimers();
+void calculateSunriseAndSunset();
+void setTimeFromAPI(uint32_t timein);
 
 //overlay.cpp
 void initCronixie();
@@ -134,11 +174,22 @@ void setCronixie();
 void _overlayCronixie();    
 void _drawOverlayCronixie();
 
+//playlist.cpp
+void shufflePlaylist();
+void unloadPlaylist();
+int16_t loadPlaylist(JsonObject playlistObject, byte presetId = 0);
+void handlePlaylist();
+
+//presets.cpp
+bool applyPreset(byte index, byte callMode = CALL_MODE_DIRECT_CHANGE);
+void savePreset(byte index, bool persist = true, const char* pname = nullptr, JsonObject saveobj = JsonObject());
+void deletePreset(byte index);
+
 //set.cpp
 void _setRandomColor(bool _sec,bool fromButton=false);
 bool isAsterisksOnly(const char* str, byte maxLen);
 void handleSettingsSet(AsyncWebServerRequest *request, byte subPage);
-bool handleSet(AsyncWebServerRequest *request, const String& req);
+bool handleSet(AsyncWebServerRequest *request, const String& req, bool apply=true);
 int getNumVal(const String* req, uint16_t pos);
 bool updateVal(const String* req, const char* key, byte* val, byte minv=0, byte maxv=255);
 
@@ -147,6 +198,8 @@ void notify(byte callMode, bool followUp=false);
 void realtimeLock(uint32_t timeoutMs, byte md = REALTIME_MODE_GENERIC);
 void handleNotifications();
 void setRealtimePixel(uint16_t i, byte r, byte g, byte b, byte w);
+void refreshNodeList();
+void sendSysInfoUDP();
 
 //um_manager.cpp
 class Usermod {
@@ -157,6 +210,10 @@ class Usermod {
     virtual void addToJsonState(JsonObject& obj) {}
     virtual void addToJsonInfo(JsonObject& obj) {}
     virtual void readFromJsonState(JsonObject& obj) {}
+    virtual void addToConfig(JsonObject& obj) {}
+    virtual bool readFromConfig(JsonObject& obj) { return true; } // Note as of 2021-06 readFromConfig() now needs to return a bool, see usermod_v2_example.h
+    virtual void onMqttConnect(bool sessionPresent) {}
+    virtual bool onMqttMessage(char* topic, char* payload) { return false; }
     virtual uint16_t getId() {return USERMOD_ID_UNSPECIFIED;}
 };
 
@@ -175,7 +232,12 @@ class UsermodManager {
     void addToJsonInfo(JsonObject& obj);
     void readFromJsonState(JsonObject& obj);
 
+    void addToConfig(JsonObject& obj);
+    bool readFromConfig(JsonObject& obj);
+    void onMqttConnect(bool sessionPresent);
+    bool onMqttMessage(char* topic, char* payload);
     bool add(Usermod* um);
+    Usermod* lookup(uint16_t mod_id);
     byte getModCount();
 };
 
@@ -188,18 +250,10 @@ void userConnected();
 void userLoop();
 
 //wled_eeprom.cpp
-void commit();
-void clearEEPROM();
-void writeStringToEEPROM(uint16_t pos, char* str, uint16_t len);
-void readStringFromEEPROM(uint16_t pos, char* str, uint16_t len);
-void saveSettingsToEEPROM();
-void loadSettingsFromEEPROM(bool first);
-void savedToPresets();
-bool applyPreset(byte index, bool loadBri = true);
-void savePreset(byte index, bool persist = true);
-void loadMacro(byte index, char* m);
 void applyMacro(byte index);
-void saveMacro(byte index, const String& mc, bool persist = true); //only commit on single save, not in settings
+void deEEP();
+void deEEPSettings();
+void clearEEPROM();
 
 //wled_serial.cpp
 void handleSerial();

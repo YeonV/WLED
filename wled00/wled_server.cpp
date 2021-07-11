@@ -39,9 +39,15 @@ void initServer()
   DefaultHeaders::Instance().addHeader(F("Access-Control-Allow-Methods"), "*");
   DefaultHeaders::Instance().addHeader(F("Access-Control-Allow-Headers"), "*");
 
-  server.on("/liveview", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/html", PAGE_liveview);
-  });
+ #ifdef WLED_ENABLE_WEBSOCKETS
+    server.on("/liveview", HTTP_GET, [](AsyncWebServerRequest *request){
+      request->send_P(200, "text/html", PAGE_liveviewws);
+    });
+ #else
+    server.on("/liveview", HTTP_GET, [](AsyncWebServerRequest *request){
+      request->send_P(200, "text/html", PAGE_liveview);
+    });
+  #endif
   
   //settings page
   server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request){
@@ -78,6 +84,7 @@ void initServer()
 
   AsyncCallbackJsonWebHandler* handler = new AsyncCallbackJsonWebHandler("/json", [](AsyncWebServerRequest *request) {
     bool verboseResponse = false;
+    bool isConfig = false;
     { //scope JsonDocument so it releases its buffer
       DynamicJsonDocument jsonBuffer(JSON_BUFFER_SIZE);
       DeserializationError error = deserializeJson(jsonBuffer, (uint8_t*)(request->_tempObject));
@@ -85,16 +92,27 @@ void initServer()
       if (error || root.isNull()) {
         request->send(400, "application/json", F("{\"error\":9}")); return;
       }
-      verboseResponse = deserializeState(root);
+      const String& url = request->url();
+      isConfig = url.indexOf("cfg") > -1;
+      if (!isConfig) {
+        fileDoc = &jsonBuffer;
+        verboseResponse = deserializeState(root);
+        fileDoc = nullptr;
+      } else {
+        verboseResponse = deserializeConfig(root); //use verboseResponse to determine whether cfg change should be saved immediately
+      }
     }
-    if (verboseResponse) { //if JSON contains "v"
-      serveJson(request); return; 
+    if (verboseResponse) {
+      if (!isConfig) {
+        serveJson(request); return; //if JSON contains "v"
+      } else {
+        serializeConfig(); //Save new settings to FS
+      }
     } 
     request->send(200, "application/json", F("{\"success\":true}"));
   });
   server.addHandler(handler);
 
-  //*******DEPRECATED*******
   server.on("/version", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/plain", (String)VERSION);
     });
@@ -106,7 +124,6 @@ void initServer()
   server.on("/freeheap", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send(200, "text/plain", (String)ESP.getFreeHeap());
     });
-  //*******END*******/
   
   server.on("/u", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", PAGE_usermod);
@@ -122,15 +139,15 @@ void initServer()
     
   //if OTA is allowed
   if (!otaLock){
-    #if !defined WLED_DISABLE_FILESYSTEM && defined WLED_ENABLE_FS_EDITOR
+    #ifdef WLED_ENABLE_FS_EDITOR
      #ifdef ARDUINO_ARCH_ESP32
-      server.addHandler(new SPIFFSEditor(SPIFFS));//http_username,http_password));
+      server.addHandler(new SPIFFSEditor(WLED_FS));//http_username,http_password));
      #else
-      server.addHandler(new SPIFFSEditor());//http_username,http_password));
+      server.addHandler(new SPIFFSEditor("","",WLED_FS));//http_username,http_password));
      #endif
     #else
     server.on("/edit", HTTP_GET, [](AsyncWebServerRequest *request){
-      serveMessage(request, 501, "Not implemented", F("The SPIFFS editor is disabled in this build."), 254);
+      serveMessage(request, 501, "Not implemented", F("The FS editor is disabled in this build."), 254);
     });
     #endif
     //init ota page
@@ -207,17 +224,18 @@ void initServer()
     //make API CORS compatible
     if (request->method() == HTTP_OPTIONS)
     {
-      request->send(200); return;
+      AsyncWebServerResponse *response = request->beginResponse(200);
+      response->addHeader(F("Access-Control-Max-Age"), F("7200"));
+      request->send(response);
+      return;
     }
     
     if(handleSet(request, request->url())) return;
     #ifndef WLED_DISABLE_ALEXA
     if(espalexa.handleAlexaApiCall(request)) return;
     #endif
-    #ifdef WLED_ENABLE_FS_SERVING
     if(handleFileRead(request, request->url())) return;
-    #endif
-    request->send(404, "text/plain", "Not Found");
+    request->send_P(404, "text/html", PAGE_404);
   });
 }
 
@@ -231,16 +249,32 @@ void serveIndexOrWelcome(AsyncWebServerRequest *request)
   }
 }
 
+bool handleIfNoneMatchCacheHeader(AsyncWebServerRequest* request)
+{
+  AsyncWebHeader* header = request->getHeader("If-None-Match");
+  if (header && header->value() == String(VERSION)) {
+    request->send(304);
+    return true;
+  }
+  return false;
+}
+
+void setStaticContentCacheHeaders(AsyncWebServerResponse *response)
+{
+  response->addHeader(F("Cache-Control"),"no-cache");
+  response->addHeader(F("ETag"), String(VERSION));
+}
 
 void serveIndex(AsyncWebServerRequest* request)
 {
-  #ifdef WLED_ENABLE_FS_SERVING
   if (handleFileRead(request, "/index.htm")) return;
-  #endif
+
+  if (handleIfNoneMatchCacheHeader(request)) return;
 
   AsyncWebServerResponse *response = request->beginResponse_P(200, "text/html", PAGE_index, PAGE_index_L);
 
   response->addHeader(F("Content-Encoding"),"gzip");
+  setStaticContentCacheHeaders(response);
   
   request->send(response);
 }
@@ -294,6 +328,7 @@ String settingsProcessor(const String& var)
 {
   if (var == "CSS") {
     char buf[2048];
+    buf[0] = 0;
     getSettingsJS(optionType, buf);
     return String(buf);
   }
@@ -345,6 +380,7 @@ void serveSettings(AsyncWebServerRequest* request, bool post)
     #ifdef WLED_ENABLE_DMX // include only if DMX is enabled
     else if (url.indexOf("dmx")  > 0) subPage = 7;
     #endif
+    else if (url.indexOf("um")  > 0) subPage = 8;
   } else subPage = 255; //welcome page
 
   if (subPage == 1 && wifiLock && otaLock)
@@ -366,6 +402,7 @@ void serveSettings(AsyncWebServerRequest* request, bool post)
       case 5: strcpy_P(s, PSTR("Time")); break;
       case 6: strcpy_P(s, PSTR("Security")); strcpy_P(s2, PSTR("Rebooting, please wait ~10 seconds...")); break;
       case 7: strcpy_P(s, PSTR("DMX")); break;
+      case 8: strcpy_P(s, PSTR("Usermods")); break;
     }
 
     strcat_P(s, PSTR(" settings saved."));
@@ -392,6 +429,7 @@ void serveSettings(AsyncWebServerRequest* request, bool post)
     case 5:   request->send_P(200, "text/html", PAGE_settings_time, settingsProcessor); break;
     case 6:   request->send_P(200, "text/html", PAGE_settings_sec , settingsProcessor); break;
     case 7:   request->send_P(200, "text/html", PAGE_settings_dmx , settingsProcessor); break;
+    case 8:   request->send_P(200, "text/html", PAGE_settings_um  , settingsProcessor); break;
     case 255: request->send_P(200, "text/html", PAGE_welcome); break;
     default:  request->send_P(200, "text/html", PAGE_settings     , settingsProcessor); 
   }
